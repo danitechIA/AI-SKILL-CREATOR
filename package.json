@@ -1,0 +1,15 @@
+{
+  "name": "ai-skill-generator",
+  "version": "1.0.0",
+  "description": "Desktop application for managing AI coding skills, configurations, and chatting with an AI agent",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win portable",
+    "pack": "electron-builder --win portable --dir"
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^25.0.0"
+  }
+}
