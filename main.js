@@ -1,6 +1,9 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
+const zlib = require('zlib');
+const https = require('https');
 const { spawn } = require('child_process');
 
 let mainWindow;
@@ -10,6 +13,8 @@ let serverProcess = null;
 // ─── AI Engine path ────────────────────────────────────
 
 function getAIEngineExe() {
+  const userDataExe = path.join(app.getPath('userData'), 'opencode.exe');
+  if (fs.existsSync(userDataExe)) return userDataExe;
   const npmDir = path.join(process.env.APPDATA, 'npm', 'node_modules', 'opencode-ai', 'bin');
   const exe = path.join(npmDir, 'opencode.exe');
   if (fs.existsSync(exe)) return exe;
@@ -49,6 +54,89 @@ function stripAnsi(str) {
   return str.replace(/\x1B(?:\[[0-9;]*[a-zA-Z]|\\|.)/g, '').trim();
 }
 
+// ─── OpenCode download (no npm required) ──────────────
+
+function getPlatformPackageName() {
+  const pmap = { win32: 'windows', darwin: 'darwin', linux: 'linux' };
+  const amap = { x64: 'x64', arm64: 'arm64' };
+  return `opencode-${pmap[process.platform] || process.platform}-${amap[process.arch] || process.arch}`;
+}
+
+function fetchJSON(url) {
+  return new Promise((resolve, reject) => {
+    https.get(url, { headers: { 'Accept': 'application/json' } }, (res) => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(e); } });
+    }).on('error', reject);
+  });
+}
+
+function fetchBuffer(url, onProgress) {
+  return new Promise((resolve, reject) => {
+    https.get(url, (res) => {
+      if (res.statusCode >= 300 && res.headers.location) {
+        https.get(res.headers.location, (res2) => {
+          const total2 = parseInt(res2.headers['content-length'] || '0', 10);
+          const chunks = []; let dl = 0;
+          res2.on('data', c => { chunks.push(c); dl += c.length; if (onProgress && total2) onProgress(dl / total2); });
+          res2.on('end', () => resolve(Buffer.concat(chunks)));
+        }).on('error', reject);
+        return;
+      }
+      const total = parseInt(res.headers['content-length'] || '0', 10);
+      const chunks = []; let dl = 0;
+      res.on('data', c => { chunks.push(c); dl += c.length; if (onProgress && total) onProgress(dl / total); });
+      res.on('end', () => resolve(Buffer.concat(chunks)));
+    }).on('error', reject);
+  });
+}
+
+function extractTarGz(buffer, targetFile) {
+  return new Promise((resolve, reject) => {
+    zlib.gunzip(buffer, (err, tar) => {
+      if (err) return reject(err);
+      let offset = 0;
+      while (offset < tar.length) {
+        if (tar[offset] === 0) break;
+        const name = tar.subarray(offset, offset + 100).toString('utf-8').replace(/\0.*$/, '');
+        const sizeStr = tar.subarray(offset + 124, offset + 136).toString('utf-8').replace(/\0.*$/, '');
+        const size = parseInt(sizeStr, 8) || 0;
+        if (name.endsWith('/opencode.exe')) {
+          const data = tar.subarray(offset + 512, offset + 512 + size);
+          const dir = path.dirname(targetFile);
+          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(targetFile, data);
+          try { fs.chmodSync(targetFile, 0o755); } catch {}
+          resolve(true);
+          return;
+        }
+        offset += 512 + Math.ceil(size / 512) * 512;
+      }
+      reject(new Error('opencode.exe not found in package'));
+    });
+  });
+}
+
+async function downloadOpenCodePlatform(onProgress) {
+  const targetExe = path.join(app.getPath('userData'), 'opencode.exe');
+  if (fs.existsSync(targetExe)) return targetExe;
+
+  const packageName = getPlatformPackageName();
+  const pkgInfo = await fetchJSON(`https://registry.npmjs.org/${packageName}/latest`);
+  const tarballUrl = pkgInfo.dist.tarball;
+
+  mainWindow?.webContents.send('install-progress', { phase: 'download' });
+  const tarball = await fetchBuffer(tarballUrl, (pct) => {
+    mainWindow?.webContents.send('install-progress', { phase: 'download', progress: pct });
+  });
+
+  mainWindow?.webContents.send('install-progress', { phase: 'extract' });
+  await extractTarGz(tarball, targetExe);
+
+  return targetExe;
+}
+
 // ─── Window ─────────────────────────────────────────────
 
 function createWindow() {
@@ -57,12 +145,12 @@ function createWindow() {
     height: 800,
     minWidth: 900,
     minHeight: 600,
+    frame: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
-    titleBarStyle: 'hiddenInset',
     show: false,
   });
 
@@ -72,7 +160,53 @@ function createWindow() {
   startServer();
 }
 
-app.whenReady().then(createWindow);
+// ─── Error handlers ─────────────────────────────────────
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Rejection:', reason);
+});
+
+Menu.setApplicationMenu(null);
+
+// ─── Auto-updater ────────────────────────────────────
+
+function setupAutoUpdater() {
+  autoUpdater.on('checking-for-update', () => {
+    mainWindow?.webContents.send('update-status', 'Checking for updates...');
+  });
+  autoUpdater.on('update-available', (info) => {
+    mainWindow?.webContents.send('update-status', `Update v${info.version} available. Downloading...`);
+    mainWindow?.webContents.send('update-available', info);
+  });
+  autoUpdater.on('download-progress', (p) => {
+    mainWindow?.webContents.send('update-progress', p.percent);
+  });
+  autoUpdater.on('update-downloaded', () => {
+    mainWindow?.webContents.send('update-downloaded');
+    mainWindow?.webContents.send('update-status', 'Update ready. Restart to apply.');
+  });
+  autoUpdater.on('error', (err) => {
+    console.error('Auto-updater error:', err?.message || err);
+  });
+}
+
+ipcMain.on('check-for-updates', () => {
+  autoUpdater.checkForUpdatesAndNotify();
+});
+
+ipcMain.on('restart-for-update', () => {
+  autoUpdater.quitAndInstall();
+});
+
+app.whenReady().then(() => {
+  createWindow();
+  setupAutoUpdater();
+  autoUpdater.checkForUpdatesAndNotify();
+});
 
 app.on('window-all-closed', () => { stopServer(); app.quit(); });
 app.on('before-quit', () => { stopServer(); });
@@ -93,12 +227,63 @@ function getConfigPath() {
   return p ? path.join(p, 'opencode.json') : null;
 }
 
-// ─── IPC: Project ───────────────────────────────────────
+// ─── Skill Creator Agent ───────────────────────────────
+
+const SKILL_CREATOR_AGENT = `---
+description: >
+  Creador profesional de skills para asistentes de código AI. Úsalo cuando
+  necesites crear, modificar o depurar skills. Los skills generados son
+  compatibles con Claude Code, Codex CLI, Gemini CLI, GitHub Copilot,
+  Cursor, Windsurf y 20+ asistentes más (formato SKILL.md estándar).
+mode: all
+permission:
+  read: allow
+  edit: allow
+  write: allow
+  glob: allow
+  grep: allow
+  bash: allow
+---
+
+Eres un experto creador de skills para asistentes de código AI. Conoces:
+
+1. **Formato SKILL.md** — frontmatter con \`name\`, \`description\`, \`type\`, \`compatibility\`
+2. **Ruta del skill**: \`.opencode/skills/<nombre>/SKILL.md\`
+3. **Reglas**:
+   - \`name\` es obligatorio, en minúsculas con guiones, máx 64 caracteres
+   - \`description\` debe describir QUÉ hace el skill y CUÁNDO usarlo
+   - \`type\` debe ser \`skill\`
+4. **Compatibilidad**: Los skills generados funcionan en Claude Code, Codex CLI, Gemini CLI, GitHub Copilot, Cursor y cualquier asistente que soporte SKILL.md. Incluir \`compatibility\` en frontmatter.
+
+**Reglas importantes sobre el contenido del skill:**
+- NO incluyas secciones de "Cómo usarlo", "Cómo se activa", "@", ni instrucciones de uso. El AI lo detecta automáticamente cuando el usuario habla del tema.
+- NO incluyas "Reinicia", "reiniciar", ni ninguna instrucción de reinicio o recarga.
+- NO incluyas recomendaciones de herramientas externas ni cómo acceder a nada.
+- El usuario objetivo ya sabe qué hacer con el skill — el contenido debe ser puramente la instrucción para el AI, sin explicaciones al usuario.
+- Si aplica, incluye una advertencia clara de que no reemplaza ayuda profesional.
+
+Siempre que crees un skill:
+- Pregunta al usuario qué debe hacer el skill
+- Propón un \`name\` y \`description\` claros
+- Escribe el archivo SKILL.md en la ruta \`.opencode/skills/<nombre>/SKILL.md\`
+- Si existe \`opencode.json\`, agrega la ruta \`.opencode/skills/<nombre>/SKILL.md\` al array \`instructions\` si no está
+- **No devuelvas el contenido del archivo en tu respuesta.** Tu respuesta debe ser únicamente: "Skill creada. Encontrarás la skill en el panel Skills."`;
+
+function ensureSkillCreatorAgent() {
+  const p = getProjectPath();
+  if (!p) return;
+  const agentsDir = path.join(p, '.opencode', 'agents');
+  const agentFile = path.join(agentsDir, 'skill-creator.md');
+  if (fs.existsSync(agentFile)) return;
+  if (!fs.existsSync(agentsDir)) fs.mkdirSync(agentsDir, { recursive: true });
+  fs.writeFileSync(agentFile, SKILL_CREATOR_AGENT, 'utf-8');
+}
 
 ipcMain.handle('select-project', async () => {
   const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] });
   if (!result.canceled && result.filePaths.length > 0) {
     projectPath = result.filePaths[0];
+    ensureSkillCreatorAgent();
     stopServer();
     startServer();
     return { success: true, path: projectPath };
@@ -108,10 +293,9 @@ ipcMain.handle('select-project', async () => {
 
 ipcMain.handle('get-project-info', async () => {
   const p = getProjectPath();
-  if (!p) return { path: null, name: null, exists: false, skillsCount: 0, skills: [], config: null };
+  if (!p) return { path: null, name: null, exists: false, skillsCount: 0, skills: [] };
 
   const skillsDir = getSkillsDir();
-  const configPath = getConfigPath();
   const info = { path: p, name: path.basename(p), exists: true };
 
   if (skillsDir && fs.existsSync(skillsDir)) {
@@ -130,12 +314,6 @@ ipcMain.handle('get-project-info', async () => {
   } else {
     info.skillsCount = 0;
     info.skills = [];
-  }
-
-  if (configPath && fs.existsSync(configPath)) {
-    try { info.config = JSON.parse(fs.readFileSync(configPath, 'utf-8')); } catch { info.config = null; }
-  } else {
-    info.config = null;
   }
 
   return info;
@@ -243,14 +421,13 @@ ipcMain.handle('delete-skill', async (_, name) => {
   } catch (err) { return { success: false, error: err.message }; }
 });
 
-ipcMain.handle('save-config', async (_, config) => {
-  try {
-    const configPath = getConfigPath();
-    if (!configPath) return { success: false, error: 'No project selected' };
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
-    return { success: true };
-  } catch (err) { return { success: false, error: err.message }; }
+// ─── IPC: Window controls ──────────────────────────────
+
+ipcMain.on('window-minimize', () => mainWindow?.minimize());
+ipcMain.on('window-maximize', () => {
+  if (mainWindow?.isMaximized()) mainWindow?.unmaximize(); else mainWindow?.maximize();
 });
+ipcMain.on('window-close', () => mainWindow?.close());
 
 // ─── IPC: AI Engine ─────────────────────────────────────
 
@@ -271,20 +448,14 @@ ipcMain.handle('check-ai-engine', async () => {
 });
 
 ipcMain.handle('install-ai-engine', async () => {
-  return new Promise((resolve) => {
-    const child = spawn('npm', ['install', '-g', '@opencode-ai/cli'], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
+  try {
+    await downloadOpenCodePlatform((pct) => {
+      mainWindow?.webContents.send('install-progress', { phase: 'download', progress: pct });
     });
-    let stderr = '';
-    child.stderr.on('data', d => stderr += d.toString());
-    child.on('close', (code) => {
-      resolve({ success: code === 0, error: code !== 0 ? (stderr || 'npm install failed') : undefined });
-    });
-    child.on('error', (err) => {
-      resolve({ success: false, error: err.message });
-    });
-  });
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
 });
 
 ipcMain.handle('run-ai', async (_, message) => {
@@ -301,9 +472,9 @@ ipcMain.handle('run-ai', async (_, message) => {
       return;
     }
 
-    const prefixed = `Your name is AI Skill Generator.\n\n${message}`;
+    ensureSkillCreatorAgent();
 
-    const child = spawn(exe, ['run', prefixed], {
+    const child = spawn(exe, ['run', message, '--agent', 'skill-creator', '--dangerously-skip-permissions'], {
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, FORCE_COLOR: '0' },

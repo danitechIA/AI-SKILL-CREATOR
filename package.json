@@ -1,15 +1,52 @@
 {
   "name": "ai-skill-generator",
   "version": "1.0.0",
-  "description": "Desktop application for managing AI coding skills, configurations, and chatting with an AI agent",
+  "description": "Desktop application for managing AI coding skills and chatting with an AI agent",
+  "author": "AI Skill Generator",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "prebuild": "node scripts/generate-icon.mjs",
     "build": "electron-builder --win portable",
     "pack": "electron-builder --win portable --dir"
+  },
+  "build": {
+    "appId": "com.opencode.skill-generator",
+    "productName": "AI Skill Generator",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "build/**/*"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-${version}-portable.${ext}"
+    },
+    "portable": {
+      "requestExecutionLevel": "user"
+    },
+    "publish": {
+      "provider": "generic",
+      "url": "https://example.com/releases"
+    }
   },
   "devDependencies": {
     "electron": "^35.0.0",
     "electron-builder": "^25.0.0"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.3"
   }
 }

@@ -52,7 +52,33 @@ async function init() {
   const info = await window.api.getProjectInfo();
   state.projectInfo = info;
   updateProjectStatus(info);
+
+  setupUpdateListeners();
+
   renderView('home');
+}
+
+function setupUpdateListeners() {
+  window.api.onUpdateStatus((msg) => {
+    console.log('Update:', msg);
+  });
+  window.api.onUpdateAvailable(() => {
+    showToast('Update available — downloading...', 'info');
+  });
+  window.api.onUpdateProgress((pct) => {
+    // could show progress if desired
+  });
+  window.api.onUpdateDownloaded(() => {
+    const toast = document.getElementById('toast');
+    toast.textContent = 'Update ready. Restart to apply.';
+    toast.className = 'toast info action';
+    const btn = document.createElement('span');
+    btn.className = 'toast-action';
+    btn.textContent = 'Restart';
+    btn.onclick = () => window.api.restartForUpdate();
+    toast.appendChild(btn);
+    toast.classList.remove('hidden');
+  });
 }
 
 function updateProjectStatus(info) {
@@ -70,12 +96,21 @@ function renderView(view) {
   container.style.display = 'block';
   document.getElementById('loading-screen').style.display = 'none';
 
-  switch (view) {
-    case 'home': renderHome(container); break;
-    case 'skills': renderSkills(container); break;
-    case 'chat': renderChat(container); break;
-    case 'config': renderConfig(container); break;
-    case 'settings': renderSettings(container); break;
+  try {
+    switch (view) {
+      case 'home': renderHome(container); break;
+      case 'skills': renderSkills(container); break;
+      case 'chat': renderChat(container); break;
+      case 'settings': renderSettings(container); break;
+    }
+  } catch (err) {
+    console.error('Render error:', err);
+    container.innerHTML = `
+      <div class="empty-state">
+        <h3>Something went wrong</h3>
+        <p>${escapeHtml(err.message || 'An unexpected error occurred')}</p>
+        <button class="btn btn-primary" onclick="navigate('home')">Back to Dashboard</button>
+      </div>`;
   }
 }
 
@@ -102,14 +137,6 @@ function renderHome(container) {
       <div class="card stat-card">
         <div class="stat-value">${info.skillsCount || 0}</div>
         <div class="stat-label">Skills</div>
-      </div>
-      <div class="card stat-card">
-        <div class="stat-value">${info.config ? info.config.instructions?.length || 0 : 0}</div>
-        <div class="stat-label">Instructions Registered</div>
-      </div>
-      <div class="card stat-card">
-        <div class="stat-value">${info.config?.agent ? Object.keys(info.config.agent).length : 0}</div>
-        <div class="stat-label">Agents</div>
       </div>
       <div class="card stat-card">
         <div class="stat-value">${state.aiEngineInstalled ? '&#10003;' : '&#10007;'}</div>
@@ -142,19 +169,34 @@ async function selectProject() {
 }
 
 async function installAIEngine() {
-  const btn = document.querySelector('.install-banner .btn');
-  btn.textContent = 'Installing...';
-  btn.disabled = true;
-
   const banner = document.querySelector('.install-banner');
+  const btn = banner?.querySelector('.btn');
+
   const progress = document.createElement('div');
   progress.className = 'install-progress';
-  progress.innerHTML = '<div class="install-progress-bar" style="width:50%"></div>';
-  banner.appendChild(progress);
+  progress.innerHTML = '<div class="install-progress-bar" style="width:0%"></div><p class="install-progress-text" style="margin-top:8px;font-size:12px;color:var(--text-secondary)">Starting...</p>';
+  if (banner) banner.appendChild(progress);
+  if (btn) { btn.textContent = 'Installing...'; btn.disabled = true; }
+
+  const bar = progress?.querySelector('.install-progress-bar');
+  const text = progress?.querySelector('.install-progress-text');
+
+  window.api.onInstallProgress((data) => {
+    if (data.phase === 'download' && bar) {
+      if (text) text.textContent = 'Downloading AI Engine...';
+      bar.style.width = Math.round((data.progress || 0) * 90) + '%';
+    }
+    if (data.phase === 'extract' && bar) {
+      bar.style.width = '95%';
+      if (text) text.textContent = 'Extracting...';
+    }
+  });
 
   const result = await window.api.installAIEngine();
   if (result.success) {
     state.aiEngineInstalled = true;
+    if (bar) bar.style.width = '100%';
+    if (text) text.textContent = 'Done!';
     showToast('AI Engine installed successfully!');
     renderView(state.currentView);
   } else {
@@ -177,15 +219,33 @@ function renderSkills(container) {
       <h1>Skills</h1>
       <button class="btn btn-primary" onclick="showCreateSkillModal()">+ New Skill</button>
     </div>
+    <div class="skills-toolbar">
+      <input class="skills-search" type="text" placeholder="Search skills..." id="skills-search" oninput="renderSkillsList()" />
+    </div>
+    <div id="skills-list-wrapper">${renderSkillsListHtml(info.skills)}</div>
+  `;
+}
 
-    ${info.skills.length === 0 ? `
+function renderSkillsListHtml(skills) {
+  const term = (document.getElementById('skills-search')?.value || '').toLowerCase().trim();
+  const filtered = term ? skills.filter(s =>
+    s.displayName.toLowerCase().includes(term) ||
+    s.name.toLowerCase().includes(term) ||
+    (s.description || '').toLowerCase().includes(term)
+  ) : skills;
+
+  if (filtered.length === 0) {
+    const msg = term ? `No skills matching "${escapeHtml(term)}"` : 'No skills yet';
+    return `
     <div class="empty-state">
-      <h3>No skills yet</h3>
-      <p>Create your first skill to get started</p>
-      <button class="btn btn-primary" onclick="showCreateSkillModal()">Create Skill</button>
-    </div>` : `
+      <h3>${msg}</h3>
+      ${!term ? '<p>Create your first skill to get started</p><button class="btn btn-primary" onclick="showCreateSkillModal()">Create Skill</button>' : ''}
+    </div>`;
+  }
+
+  return `
     <div class="card-grid" id="skills-list">
-      ${info.skills.map(s => `
+      ${filtered.map(s => `
         <div class="card skill-card" data-skill="${escapeAttr(s.name)}" onclick="editSkill(this.dataset.skill)">
           <h3>${escapeHtml(s.displayName)}</h3>
           <p>${escapeHtml(s.description || 'No description')}</p>
@@ -195,8 +255,12 @@ function renderSkills(container) {
           </div>
         </div>
       `).join('')}
-    </div>`}
-  `;
+    </div>`;
+}
+
+function renderSkillsList() {
+  const wrapper = document.getElementById('skills-list-wrapper');
+  if (wrapper) wrapper.innerHTML = renderSkillsListHtml(state.projectInfo?.skills || []);
 }
 
 function showCreateSkillModal() {
@@ -403,12 +467,13 @@ async function sendChat() {
     if (lastMsg) lastMsg.textContent = 'Error: ' + (result.error || 'Command failed');
     chatHistory[chatStreamMsgIndex].content = 'Error: ' + (result.error || 'Command failed');
     document.getElementById('chat-status').textContent = '';
-    input.disabled = false;
-    document.getElementById('chat-send-btn').disabled = false;
-    input.focus();
+    return;
   }
 
-  // Refresh project info so new skills created by AI appear in dashboard
+  input.disabled = false;
+  document.getElementById('chat-send-btn').disabled = false;
+  input.focus();
+
   const refreshed = await window.api.getProjectInfo();
   if (refreshed) {
     state.projectInfo = refreshed;
@@ -432,60 +497,6 @@ function clearChat() {
   chatStreamBuffer = '';
   chatStreamMsgIndex = -1;
   renderView('chat');
-}
-
-// ─── Config ───
-let configOriginal = '';
-
-async function renderConfig(container) {
-  const info = state.projectInfo;
-  if (!info || !info.exists || !info.config) {
-    container.innerHTML = `
-      <div class="header"><h1>Configuration</h1></div>
-      <div class="empty-state"><h3>No project config found</h3></div>`;
-    return;
-  }
-
-  const result = await window.api.readFile('opencode.json');
-  if (result.success) {
-    configOriginal = result.content;
-  } else {
-    configOriginal = JSON.stringify(info.config, null, 2);
-  }
-
-  container.innerHTML = `
-    <div class="header">
-      <h1>Configuration</h1>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-secondary" onclick="resetConfig()">Reset</button>
-        <button class="btn btn-primary" onclick="saveConfig()">Save</button>
-      </div>
-    </div>
-    <div class="config-editor">
-      <textarea class="editor-textarea" id="config-editor">${escapeHtml(configOriginal)}</textarea>
-    </div>
-  `;
-}
-
-async function saveConfig() {
-  const content = document.getElementById('config-editor').value;
-  try {
-    const parsed = JSON.parse(content);
-    const result = await window.api.saveConfig(parsed);
-    if (result.success) {
-      configOriginal = content;
-      state.projectInfo = await window.api.getProjectInfo();
-      showToast('Configuration saved! Restart AI Skill Generator to apply.');
-    } else {
-      showToast('Save failed: ' + result.error, 'error');
-    }
-  } catch (e) {
-    showToast('Invalid JSON: ' + e.message, 'error');
-  }
-}
-
-function resetConfig() {
-  document.getElementById('config-editor').value = configOriginal;
 }
 
 // ─── Settings ───
@@ -526,7 +537,6 @@ function renderSettings(container) {
       <div style="font-size:13px;color:var(--text-secondary)">
         <p>AI Skill Generator v1.0.0</p>
         <p>Desktop application for managing AI coding skills.</p>
-        <p style="margin-top:8px">Built with Electron &lt;3</p>
         <p style="margin-top:8px">
           <a href="#" onclick="event.preventDefault();navigate('home')" style="color:var(--primary)">Dashboard</a>
           &middot;

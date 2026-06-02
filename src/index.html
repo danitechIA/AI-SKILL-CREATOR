@@ -7,12 +7,16 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <div id="titlebar">
+    <span class="logo-text">AI SKILL GENERATOR</span>
+    <div id="titlebar-controls">
+      <button class="tb-btn" onclick="window.api.windowMinimize()">─</button>
+      <button class="tb-btn" onclick="window.api.windowMaximize()">□</button>
+      <button class="tb-btn tb-close" onclick="window.api.windowClose()">✕</button>
+    </div>
+  </div>
   <div id="app">
     <aside id="sidebar">
-      <div class="sidebar-header">
-        <div class="logo">AS</div>
-        <span class="logo-text">AI Skill Generator</span>
-      </div>
       <nav id="nav">
         <button class="nav-btn active" data-view="home">
           <span class="nav-icon">&#9632;</span>
@@ -25,10 +29,6 @@
         <button class="nav-btn" data-view="chat">
           <span class="nav-icon">&#9998;</span>
           <span>Agent Chat</span>
-        </button>
-        <button class="nav-btn" data-view="config">
-          <span class="nav-icon">&#9881;</span>
-          <span>Configuration</span>
         </button>
         <button class="nav-btn" data-view="settings">
           <span class="nav-icon">&#9878;</span>
