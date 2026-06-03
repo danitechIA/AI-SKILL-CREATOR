@@ -57,6 +57,7 @@ async function init() {
   updateProjectStatus(info);
 
   setupUpdateListeners();
+  setupChatListeners();
 
   renderView('home');
 }
@@ -375,6 +376,38 @@ let chatHistory = [];
 
 let chatStreamBuffer = '';
 let chatStreamMsgIndex = -1;
+let chatRunning = false;
+
+function setupChatListeners() {
+  window.api.onAIOutput((data) => {
+    chatStreamBuffer += stripAIBranding(data);
+    chatHistory[chatStreamMsgIndex].content = chatStreamBuffer;
+    if (state.currentView === 'chat') {
+      const msgs = document.querySelectorAll('.chat-messages .message.assistant');
+      const lastMsg = msgs[msgs.length - 1];
+      if (lastMsg) {
+        lastMsg.textContent = chatStreamBuffer;
+        document.getElementById('chat-messages')?.scrollTo(0, 999999);
+      }
+    }
+  });
+
+  window.api.onAIDone((result) => {
+    const displayText = stripAIBranding(chatStreamBuffer || '(no output)');
+    chatHistory[chatStreamMsgIndex].content = displayText;
+    chatRunning = false;
+    if (state.currentView === 'chat') {
+      const msgs = document.querySelectorAll('.chat-messages .message.assistant');
+      const lastMsg = msgs[msgs.length - 1];
+      if (lastMsg) lastMsg.textContent = displayText;
+      document.getElementById('chat-status').textContent = result.success ? '' : 'Command finished with errors';
+      document.getElementById('chat-input').disabled = false;
+      document.getElementById('chat-send-btn').disabled = false;
+      document.getElementById('chat-input').focus();
+      document.getElementById('chat-messages')?.scrollTo(0, 999999);
+    }
+  });
+}
 
 function renderChat(container) {
   if (!state.aiEngineInstalled) {
@@ -394,30 +427,6 @@ function renderChat(container) {
     return;
   }
 
-  window.api.onAIOutput((data) => {
-    chatStreamBuffer += stripAIBranding(data);
-    const msgs = document.querySelectorAll('.chat-messages .message.assistant');
-    const lastMsg = msgs[msgs.length - 1];
-    if (lastMsg) {
-      lastMsg.textContent = chatStreamBuffer;
-      document.getElementById('chat-messages')?.scrollTo(0, 999999);
-    }
-  });
-
-  window.api.onAIDone((result) => {
-    const displayText = stripAIBranding(chatStreamBuffer || '(no output)');
-    chatHistory[chatStreamMsgIndex].content = displayText;
-    const msgs = document.querySelectorAll('.chat-messages .message.assistant');
-    const lastMsg = msgs[msgs.length - 1];
-    if (lastMsg) lastMsg.textContent = displayText;
-
-    document.getElementById('chat-status').textContent = result.success ? '' : 'Command finished with errors';
-    document.getElementById('chat-input').disabled = false;
-    document.getElementById('chat-send-btn').disabled = false;
-    document.getElementById('chat-input').focus();
-    document.getElementById('chat-messages')?.scrollTo(0, 999999);
-  });
-
   container.innerHTML = `
     <div class="header">
       <h1>Agent Chat</h1>
@@ -430,15 +439,16 @@ function renderChat(container) {
           <div class="message ${m.role}">${escapeHtml(m.content)}</div>
         `).join('')}
       </div>
-      <div id="chat-status" class="chat-status"></div>
+      <div id="chat-status" class="chat-status">${chatRunning ? 'Processing...' : ''}</div>
       <div class="chat-input-area">
         <input type="text" class="chat-input" id="chat-input"
-          placeholder="Ask the agent..." onkeydown="if(event.key==='Enter' && !event.shiftKey)sendChat()" />
-        <button class="btn btn-primary" id="chat-send-btn" onclick="sendChat()">Send</button>
+          placeholder="Ask the agent..." onkeydown="if(event.key==='Enter' && !event.shiftKey)sendChat()"
+          ${chatRunning ? 'disabled' : ''} />
+        <button class="btn btn-primary" id="chat-send-btn" onclick="sendChat()" ${chatRunning ? 'disabled' : ''}>Send</button>
       </div>
     </div>
   `;
-  document.getElementById('chat-input').focus();
+  if (!chatRunning) document.getElementById('chat-input')?.focus();
 }
 
 async function sendChat() {
@@ -450,6 +460,7 @@ async function sendChat() {
   input.disabled = true;
   document.getElementById('chat-send-btn').disabled = true;
   document.getElementById('chat-status').textContent = 'Processing...';
+  chatRunning = true;
 
   chatHistory.push({ role: 'user', content: msg });
   appendMessage('user', msg);
@@ -466,29 +477,30 @@ async function sendChat() {
       new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout (120s)')), 120000))
     ]);
   } catch (e) {
-    const msgs = document.querySelectorAll('.chat-messages .message.assistant');
-    const lastMsg = msgs[msgs.length - 1];
-    if (lastMsg) lastMsg.textContent = 'Error: ' + e.message;
+    chatRunning = false;
     chatHistory[chatStreamMsgIndex].content = 'Error: ' + e.message;
-    document.getElementById('chat-status').textContent = '';
-    input.disabled = false;
-    document.getElementById('chat-send-btn').disabled = false;
-    input.focus();
+    if (state.currentView === 'chat') {
+      const msgs = document.querySelectorAll('.chat-messages .message.assistant');
+      const lastMsg = msgs[msgs.length - 1];
+      if (lastMsg) lastMsg.textContent = 'Error: ' + e.message;
+      document.getElementById('chat-status').textContent = '';
+      input.disabled = false;
+      document.getElementById('chat-send-btn').disabled = false;
+      input.focus();
+    }
     return;
   }
 
   if (!result.success && !result.output) {
-    const msgs = document.querySelectorAll('.chat-messages .message.assistant');
-    const lastMsg = msgs[msgs.length - 1];
-    if (lastMsg) lastMsg.textContent = 'Error: ' + (result.error || 'Command failed');
+    chatRunning = false;
     chatHistory[chatStreamMsgIndex].content = 'Error: ' + (result.error || 'Command failed');
-    document.getElementById('chat-status').textContent = '';
-    return;
+    if (state.currentView === 'chat') {
+      const msgs = document.querySelectorAll('.chat-messages .message.assistant');
+      const lastMsg = msgs[msgs.length - 1];
+      if (lastMsg) lastMsg.textContent = 'Error: ' + (result.error || 'Command failed');
+      document.getElementById('chat-status').textContent = '';
+    }
   }
-
-  input.disabled = false;
-  document.getElementById('chat-send-btn').disabled = false;
-  input.focus();
 
   const refreshed = await window.api.getProjectInfo();
   if (refreshed) {
