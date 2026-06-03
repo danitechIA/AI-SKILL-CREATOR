@@ -238,10 +238,8 @@ ipcMain.on('restart-for-update', () => {
 
 app.whenReady().then(() => {
   createWindow();
-  // Initial update check after 5s
-  setTimeout(() => {
-    mainWindow?.webContents.send('check-for-updates-auto');
-  }, 5000);
+  // Check for update on startup
+  mainWindow?.webContents.send('check-for-updates-auto');
 });
 
 app.on('window-all-closed', () => { stopServer(); app.quit(); });
