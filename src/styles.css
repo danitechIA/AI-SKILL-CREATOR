@@ -389,6 +389,16 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   margin-bottom: 12px;
+  min-height: 200px;
+}
+
+.chat-messages:empty::after {
+  content: 'Escribe un mensaje para empezar';
+  display: block;
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: center;
+  padding: 40px;
 }
 
 .message {
@@ -398,6 +408,21 @@ body {
   font-size: 14px;
   line-height: 1.5;
   white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.message.assistant:empty {
+  min-height: 36px;
+  background: var(--code-bg);
+}
+
+@keyframes thinking-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.message.assistant.thinking {
+  animation: thinking-pulse 1.5s ease-in-out infinite;
 }
 
 .message.user {

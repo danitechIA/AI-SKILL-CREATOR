@@ -365,6 +365,7 @@ function setupChatListeners() {
       const msgs = document.querySelectorAll('.chat-messages .message.assistant');
       const lastMsg = msgs[msgs.length - 1];
       if (lastMsg) {
+        lastMsg.classList.remove('thinking');
         lastMsg.textContent = chatStreamBuffer;
         document.getElementById('chat-messages')?.scrollTo(0, 999999);
       }
@@ -378,7 +379,10 @@ function setupChatListeners() {
     if (state.currentView === 'chat') {
       const msgs = document.querySelectorAll('.chat-messages .message.assistant');
       const lastMsg = msgs[msgs.length - 1];
-      if (lastMsg) lastMsg.textContent = displayText;
+      if (lastMsg) {
+        lastMsg.classList.remove('thinking');
+        lastMsg.textContent = displayText;
+      }
       document.getElementById('chat-status').textContent = result.success ? '' : 'Command finished with errors';
       document.getElementById('chat-input').disabled = false;
       document.getElementById('chat-send-btn').disabled = false;
@@ -446,8 +450,10 @@ async function sendChat() {
 
   chatStreamBuffer = '';
   chatStreamMsgIndex = chatHistory.length;
-  chatHistory.push({ role: 'assistant', content: '' });
-  appendMessage('assistant', '⏳ waiting...');
+  chatHistory.push({ role: 'assistant', content: '⏳ pensando...' });
+  appendMessage('assistant', '⏳ pensando...');
+  const thinkingMsg = document.querySelector('.chat-messages .message.assistant:last-child');
+  if (thinkingMsg) thinkingMsg.classList.add('thinking');
 
   let result;
   try {
