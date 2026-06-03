@@ -1,6 +1,6 @@
 # AI Skill Generator
 
-Desktop application for managing AI coding skills, configurations, and chatting with an AI agent — no terminal required.
+Desktop application for managing AI coding skills and chatting with an AI agent — no terminal required.
 
 ## Features
 
@@ -12,5 +12,5 @@ Desktop application for managing AI coding skills, configurations, and chatting 
 
 1. Open the app
 2. Click **Select Project** and choose your project folder
-3. Manage skills, edit configs, or chat with the agent
+3. Manage skills or chat with the agent
 4. If the AI engine is not installed, click **Install AI Engine** from the Dashboard or Settings

@@ -5,10 +5,13 @@ let state = {
   currentView: 'home',
   theme: 'light',
   editorSkillName: null,
+  editorHasChanges: false,
 };
 
 // ─── Router ───
 function navigate(view) {
+  if (state.editorHasChanges && !confirm('Tienes cambios sin guardar. ¿Descartarlos?')) return;
+  state.editorHasChanges = false;
   state.currentView = view;
   document.querySelectorAll('.nav-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.view === view);
@@ -326,6 +329,7 @@ async function editSkill(name) {
 
   if (result.success) {
     state.editorSkillName = name;
+    state.editorHasChanges = false;
     container.innerHTML = `
       <div class="header">
         <h1>${name}</h1>
@@ -335,7 +339,7 @@ async function editSkill(name) {
         </div>
       </div>
       <div class="editor-container">
-        <textarea class="editor-textarea" id="editor-content">${escapeHtml(result.content)}</textarea>
+        <textarea class="editor-textarea" id="editor-content" oninput="state.editorHasChanges=true">${escapeHtml(result.content)}</textarea>
       </div>
     `;
   } else {
@@ -348,6 +352,7 @@ async function saveSkillEdit() {
   const path = `.opencode/skills/${state.editorSkillName}/SKILL.md`;
   const result = await window.api.writeFile(path, content);
   if (result.success) {
+    state.editorHasChanges = false;
     showToast('Skill saved!');
   } else {
     showToast('Save failed: ' + result.error, 'error');
