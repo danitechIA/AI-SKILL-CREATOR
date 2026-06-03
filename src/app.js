@@ -450,8 +450,8 @@ async function sendChat() {
 
   chatStreamBuffer = '';
   chatStreamMsgIndex = chatHistory.length;
-  chatHistory.push({ role: 'assistant', content: '⏳ pensando...' });
-  appendMessage('assistant', '⏳ pensando...');
+  chatHistory.push({ role: 'assistant', content: '⏳ thinking...' });
+  appendMessage('assistant', '⏳ thinking...');
   const thinkingMsg = document.querySelector('.chat-messages .message.assistant:last-child');
   if (thinkingMsg) thinkingMsg.classList.add('thinking');
 
