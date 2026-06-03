@@ -65,9 +65,6 @@ function setupUpdateListeners() {
   window.api.onUpdateStatus((msg) => {
     console.log('Update:', msg);
   });
-  window.api.onUpdateAvailable(() => {
-    showToast('Update available — downloading...', 'info');
-  });
   window.api.onUpdateProgress((pct) => {
     // could show progress if desired
   });
@@ -82,6 +79,20 @@ function setupUpdateListeners() {
     toast.appendChild(btn);
     toast.classList.remove('hidden');
   });
+  window.api.onCheckUpdatesAuto(async () => {
+    await checkForUpdates();
+  });
+}
+
+async function checkForUpdates(showUpToDate = false) {
+  const result = await window.api.checkForUpdates();
+  if (result.hasUpdate) {
+    showToast(`Update v${result.latest} available — downloading...`, 'info');
+    const dl = await window.api.downloadUpdate(result.latest);
+    if (!dl.success) showToast('Update failed: ' + dl.error, 'error');
+  } else if (showUpToDate) {
+    showToast('You have the latest version.', 'info');
+  }
 }
 
 function updateProjectStatus(info) {

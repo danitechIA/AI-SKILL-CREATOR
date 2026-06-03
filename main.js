@@ -1,5 +1,4 @@
 const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron');
-const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 const zlib = require('zlib');
@@ -172,40 +171,77 @@ process.on('unhandledRejection', (reason) => {
 
 Menu.setApplicationMenu(null);
 
-// ─── Auto-updater ────────────────────────────────────
+// ─── Custom Updater (version check from repo) ──────
 
-function setupAutoUpdater() {
-  autoUpdater.on('checking-for-update', () => {
-    mainWindow?.webContents.send('update-status', 'Checking for updates...');
-  });
-  autoUpdater.on('update-available', (info) => {
-    mainWindow?.webContents.send('update-status', `Update v${info.version} available. Downloading...`);
-    mainWindow?.webContents.send('update-available', info);
-  });
-  autoUpdater.on('download-progress', (p) => {
-    mainWindow?.webContents.send('update-progress', p.percent);
-  });
-  autoUpdater.on('update-downloaded', () => {
-    mainWindow?.webContents.send('update-downloaded');
-    mainWindow?.webContents.send('update-status', 'Update ready. Restart to apply.');
-  });
-  autoUpdater.on('error', (err) => {
-    console.error('Auto-updater error:', err?.message || err);
-  });
+const REPO_OWNER = 'danitechIA';
+const REPO_NAME = 'AI-SKILL-CREATOR';
+const RAW_PKG_URL = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/master/package.json`;
+
+function semverGt(a, b) {
+  if (!a || !b) return false;
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] || 0) > (pb[i] || 0)) return true;
+    if ((pa[i] || 0) < (pb[i] || 0)) return false;
+  }
+  return false;
 }
 
-ipcMain.on('check-for-updates', () => {
-  autoUpdater.checkForUpdatesAndNotify();
+ipcMain.handle('check-for-updates', async () => {
+  try {
+    mainWindow?.webContents.send('update-status', 'Checking for updates...');
+    const remote = await fetchJSON(RAW_PKG_URL);
+    const current = require('./package.json').version;
+    const hasUpdate = semverGt(remote.version, current);
+    if (hasUpdate) {
+      mainWindow?.webContents.send('update-status', `Update v${remote.version} available. Downloading...`);
+      return { hasUpdate: true, current, latest: remote.version };
+    }
+    mainWindow?.webContents.send('update-status', 'You have the latest version.');
+    return { hasUpdate: false, current, latest: remote.version };
+  } catch (err) {
+    console.error('Update check failed:', err?.message || err);
+    return { hasUpdate: false, error: err?.message || 'Update check failed' };
+  }
+});
+
+ipcMain.handle('download-update', async (_, version) => {
+  try {
+    const url = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/v${version}/AI-Skill-Generator-${version}-portable.exe`;
+    const dest = path.join(app.getPath('temp'), `AI-Skill-Generator-${version}-portable.exe`);
+    await fetchBuffer(url, (pct) => {
+      mainWindow?.webContents.send('update-progress', Math.round(pct * 100));
+    });
+    // Replace current exe with new one and restart
+    const updatePath = path.join(app.getPath('userData'), 'update.exe');
+    fs.copyFileSync(dest, updatePath);
+    mainWindow?.webContents.send('update-downloaded');
+    mainWindow?.webContents.send('update-status', 'Update ready. Restart to apply.');
+    return { success: true, updatePath };
+  } catch (err) {
+    return { success: false, error: err?.message || 'Download failed' };
+  }
 });
 
 ipcMain.on('restart-for-update', () => {
-  autoUpdater.quitAndInstall();
+  const updateExe = path.join(app.getPath('userData'), 'update.exe');
+  if (fs.existsSync(updateExe)) {
+    const currentExe = process.execPath;
+    spawn(updateExe, ['/S', `/D=${path.dirname(currentExe)}`], {
+      detached: true,
+      stdio: 'ignore',
+    });
+  }
+  app.quit();
 });
 
 app.whenReady().then(() => {
   createWindow();
-  setupAutoUpdater();
-  autoUpdater.checkForUpdatesAndNotify();
+  // Initial update check after 5s
+  setTimeout(() => {
+    mainWindow?.webContents.send('check-for-updates-auto');
+  }, 5000);
 });
 
 app.on('window-all-closed', () => { stopServer(); app.quit(); });
