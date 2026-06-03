@@ -190,50 +190,17 @@ function semverGt(a, b) {
 
 ipcMain.handle('check-for-updates', async () => {
   try {
-    mainWindow?.webContents.send('update-status', 'Checking for updates...');
     const remote = await fetchJSON(RAW_PKG_URL);
     const current = require('./package.json').version;
     const hasUpdate = semverGt(remote.version, current);
     if (hasUpdate) {
-      mainWindow?.webContents.send('update-status', `Update v${remote.version} available. Downloading...`);
       return { hasUpdate: true, current, latest: remote.version };
     }
-    mainWindow?.webContents.send('update-status', 'You have the latest version.');
     return { hasUpdate: false, current, latest: remote.version };
   } catch (err) {
     console.error('Update check failed:', err?.message || err);
     return { hasUpdate: false, error: err?.message || 'Update check failed' };
   }
-});
-
-ipcMain.handle('download-update', async (_, version) => {
-  try {
-    const url = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/v${version}/AI-Skill-Generator-${version}-portable.exe`;
-    const dest = path.join(app.getPath('temp'), `AI-Skill-Generator-${version}-portable.exe`);
-    await fetchBuffer(url, (pct) => {
-      mainWindow?.webContents.send('update-progress', Math.round(pct * 100));
-    });
-    // Replace current exe with new one and restart
-    const updatePath = path.join(app.getPath('userData'), 'update.exe');
-    fs.copyFileSync(dest, updatePath);
-    mainWindow?.webContents.send('update-downloaded');
-    mainWindow?.webContents.send('update-status', 'Update ready. Restart to apply.');
-    return { success: true, updatePath };
-  } catch (err) {
-    return { success: false, error: err?.message || 'Download failed' };
-  }
-});
-
-ipcMain.on('restart-for-update', () => {
-  const updateExe = path.join(app.getPath('userData'), 'update.exe');
-  if (fs.existsSync(updateExe)) {
-    const currentExe = process.execPath;
-    spawn(updateExe, ['/S', `/D=${path.dirname(currentExe)}`], {
-      detached: true,
-      stdio: 'ignore',
-    });
-  }
-  app.quit();
 });
 
 app.whenReady().then(() => {

@@ -63,36 +63,15 @@ async function init() {
 }
 
 function setupUpdateListeners() {
-  window.api.onUpdateStatus((msg) => {
-    console.log('Update:', msg);
-  });
-  window.api.onUpdateProgress((pct) => {
-    // could show progress if desired
-  });
-  window.api.onUpdateDownloaded(() => {
-    const toast = document.getElementById('toast');
-    toast.textContent = 'Update ready. Restart to apply.';
-    toast.className = 'toast info action';
-    const btn = document.createElement('span');
-    btn.className = 'toast-action';
-    btn.textContent = 'Restart';
-    btn.onclick = () => window.api.restartForUpdate();
-    toast.appendChild(btn);
-    toast.classList.remove('hidden');
-  });
   window.api.onCheckUpdatesAuto(async () => {
     await checkForUpdates();
   });
 }
 
-async function checkForUpdates(showUpToDate = false) {
+async function checkForUpdates() {
   const result = await window.api.checkForUpdates();
   if (result.hasUpdate) {
-    showToast(`Update v${result.latest} available — downloading...`, 'info');
-    const dl = await window.api.downloadUpdate(result.latest);
-    if (!dl.success) showToast('Update failed: ' + dl.error, 'error');
-  } else if (showUpToDate) {
-    showToast('You have the latest version.', 'info');
+    showToast(`v${result.latest} disponible. Descargá la nueva versión desde GitHub.`, 'info');
   }
 }
 

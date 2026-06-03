@@ -27,20 +27,6 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('install-progress', (_, data) => callback(data));
   },
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
-  downloadUpdate: (version) => ipcRenderer.invoke('download-update', version),
-  restartForUpdate: () => ipcRenderer.send('restart-for-update'),
-  onUpdateStatus: (callback) => {
-    ipcRenderer.removeAllListeners('update-status');
-    ipcRenderer.on('update-status', (_, msg) => callback(msg));
-  },
-  onUpdateProgress: (callback) => {
-    ipcRenderer.removeAllListeners('update-progress');
-    ipcRenderer.on('update-progress', (_, pct) => callback(pct));
-  },
-  onUpdateDownloaded: (callback) => {
-    ipcRenderer.removeAllListeners('update-downloaded');
-    ipcRenderer.on('update-downloaded', () => callback());
-  },
   onCheckUpdatesAuto: (callback) => {
     ipcRenderer.removeAllListeners('check-for-updates-auto');
     ipcRenderer.on('check-for-updates-auto', () => callback());
