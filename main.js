@@ -264,9 +264,7 @@ function getConfigPath() {
 // ─── Skill Creator Agent ───────────────────────────────
 
 const SKILL_CREATOR_AGENT = `---
-description: >
-  Creador de skills en formato SKILL.md. Genera archivos SKILL.md y los guarda
-  en el proyecto. No hace nada más.
+description: Creador de skills en formato SKILL.md. Genera archivos SKILL.md y los guarda en el proyecto.
 mode: all
 permission:
   read: allow
@@ -309,7 +307,6 @@ function ensureSkillCreatorAgent() {
   if (!p) return;
   const agentsDir = path.join(p, '.opencode', 'agents');
   const agentFile = path.join(agentsDir, 'skill-creator.md');
-  if (fs.existsSync(agentFile)) return;
   if (!fs.existsSync(agentsDir)) fs.mkdirSync(agentsDir, { recursive: true });
   fs.writeFileSync(agentFile, SKILL_CREATOR_AGENT, 'utf-8');
 }
