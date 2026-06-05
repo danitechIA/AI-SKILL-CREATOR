@@ -8,17 +8,12 @@ on:
     branches: [master, main]
   workflow_dispatch:
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   build:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
-            script: build
           - os: macos-latest
             script: build:mac
           - os: ubuntu-latest
@@ -27,9 +22,9 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
@@ -44,11 +39,10 @@ jobs:
 
       - run: npm run ${{ matrix.script }}
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v4
         with:
           name: AI-Skill-Generator-${{ runner.os }}
           path: |
-            dist/*.exe
             dist/*.dmg
             dist/*.AppImage
             dist/*.deb
