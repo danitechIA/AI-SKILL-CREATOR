@@ -10,7 +10,7 @@ contextBridge.exposeInMainWorld('api', {
   deleteSkill: (name) => ipcRenderer.invoke('delete-skill', name),
   checkAIEngine: () => ipcRenderer.invoke('check-ai-engine'),
   installAIEngine: () => ipcRenderer.invoke('install-ai-engine'),
-  runAI: (message) => ipcRenderer.invoke('run-ai', message),
+  runAI: (message, history) => ipcRenderer.invoke('run-ai', message, history),
   windowMinimize: () => ipcRenderer.send('window-minimize'),
   windowMaximize: () => ipcRenderer.send('window-maximize'),
   windowClose: () => ipcRenderer.send('window-close'),

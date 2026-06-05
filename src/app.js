@@ -455,10 +455,11 @@ async function sendChat() {
   const thinkingMsg = document.querySelector('.chat-messages .message.assistant:last-child');
   if (thinkingMsg) thinkingMsg.classList.add('thinking');
 
+  const contextHistory = chatHistory.slice(0, chatStreamMsgIndex);
   let result;
   try {
     result = await Promise.race([
-      window.api.runAI(msg),
+      window.api.runAI(msg, contextHistory),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout (120s)')), 120000))
     ]);
   } catch (e) {

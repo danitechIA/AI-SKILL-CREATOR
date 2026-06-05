@@ -5,7 +5,8 @@ import zlib from 'zlib';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = path.join(__dirname, '..', 'build');
-const OUT_FILE = path.join(OUT_DIR, 'icon.ico');
+const ICO_FILE = path.join(OUT_DIR, 'icon.ico');
+const PNG_FILE = path.join(OUT_DIR, 'icon.png');
 
 const PRIMARY = [79, 110, 247];
 const ACCENT = [139, 92, 246];
@@ -176,8 +177,12 @@ function main() {
   });
 
   const ico = Buffer.concat([header, ...dirs, ...entries.map(e => e.data)]);
-  fs.writeFileSync(OUT_FILE, ico);
-  console.log(`Icon generated: ${OUT_FILE} (${ico.length}, ${entries.length} resolutions)`);
+  fs.writeFileSync(ICO_FILE, ico);
+  console.log(`ICO generated: ${ICO_FILE} (${ico.length}, ${entries.length} resolutions)`);
+
+  const pngData = createPNGData(512);
+  fs.writeFileSync(PNG_FILE, pngData);
+  console.log(`PNG generated: ${PNG_FILE} (${pngData.length})`);
 }
 
 main();

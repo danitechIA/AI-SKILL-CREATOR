@@ -3,7 +3,10 @@ const path = require('path');
 const fs = require('fs');
 const zlib = require('zlib');
 const https = require('https');
+const os = require('os');
 const { spawn } = require('child_process');
+
+const DEFAULT_AI_MODEL = 'opencode/deepseek-v4-flash-free';
 
 let mainWindow;
 let projectPath = null;
@@ -11,12 +14,25 @@ let serverProcess = null;
 
 // ─── AI Engine path ────────────────────────────────────
 
+function getOpenCodeBinName() {
+  return process.platform === 'win32' ? 'opencode.exe' : 'opencode';
+}
+
 function getAIEngineExe() {
-  const userDataExe = path.join(app.getPath('userData'), 'opencode.exe');
+  const binName = getOpenCodeBinName();
+  const userDataExe = path.join(app.getPath('userData'), binName);
   if (fs.existsSync(userDataExe)) return userDataExe;
-  const npmDir = path.join(process.env.APPDATA, 'npm', 'node_modules', 'opencode-ai', 'bin');
-  const exe = path.join(npmDir, 'opencode.exe');
-  if (fs.existsSync(exe)) return exe;
+  const npmPaths = process.platform === 'win32'
+    ? [path.join(process.env.APPDATA, 'npm', 'node_modules', 'opencode-ai', 'bin')]
+    : [
+        path.join(os.homedir(), 'npm-global', 'bin'),
+        '/usr/local/lib/node_modules/opencode-ai/bin',
+        path.join(os.homedir(), '.npm-global', 'bin'),
+      ];
+  for (const dir of npmPaths) {
+    const exe = path.join(dir, binName);
+    if (fs.existsSync(exe)) return exe;
+  }
   return null;
 }
 
@@ -41,7 +57,10 @@ function startServer() {
 
 function stopServer() {
   if (serverProcess) {
-    try { serverProcess.kill('SIGTERM'); } catch {}
+    try {
+      const sig = process.platform === 'win32' ? 'SIGINT' : 'SIGTERM';
+      serverProcess.kill(sig);
+    } catch {}
     try { process.kill(serverProcess.pid); } catch {}
     serverProcess = null;
   }
@@ -95,13 +114,14 @@ function extractTarGz(buffer, targetFile) {
   return new Promise((resolve, reject) => {
     zlib.gunzip(buffer, (err, tar) => {
       if (err) return reject(err);
+      const binName = getOpenCodeBinName();
       let offset = 0;
       while (offset < tar.length) {
         if (tar[offset] === 0) break;
         const name = tar.subarray(offset, offset + 100).toString('utf-8').replace(/\0.*$/, '');
         const sizeStr = tar.subarray(offset + 124, offset + 136).toString('utf-8').replace(/\0.*$/, '');
         const size = parseInt(sizeStr, 8) || 0;
-        if (name.endsWith('/opencode.exe')) {
+        if (name.endsWith('/' + binName)) {
           const data = tar.subarray(offset + 512, offset + 512 + size);
           const dir = path.dirname(targetFile);
           if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -112,13 +132,14 @@ function extractTarGz(buffer, targetFile) {
         }
         offset += 512 + Math.ceil(size / 512) * 512;
       }
-      reject(new Error('opencode.exe not found in package'));
+      reject(new Error(binName + ' not found in package'));
     });
   });
 }
 
 async function downloadOpenCodePlatform(onProgress) {
-  const targetExe = path.join(app.getPath('userData'), 'opencode.exe');
+  const binName = getOpenCodeBinName();
+  const targetExe = path.join(app.getPath('userData'), binName);
   if (fs.existsSync(targetExe)) return targetExe;
 
   const packageName = getPlatformPackageName();
@@ -455,10 +476,26 @@ ipcMain.handle('install-ai-engine', async () => {
   }
 });
 
-ipcMain.handle('run-ai', async (_, message) => {
+function buildContextMessage(message, history) {
+  if (!history || history.length === 0) return message;
+  const lines = ['[Historial de la conversación:]'];
+  for (const entry of history) {
+    if (entry.role === 'system') continue;
+    const label = entry.role === 'user' ? 'Usuario' : 'Asistente';
+    lines.push(label + ': ' + entry.content);
+  }
+  if (lines.length === 1) return message;
+  lines.push('');
+  lines.push('[Nuevo mensaje del usuario:]');
+  lines.push(message);
+  return lines.join('\n');
+}
+
+ipcMain.handle('run-ai', async (_, message, history) => {
   return new Promise((resolve) => {
     const cwd = getProjectPath();
     const exe = getAIEngineExe();
+    const contextualized = buildContextMessage(message, history);
 
     if (!cwd) {
       resolve({ success: false, error: 'No project selected' });
@@ -471,12 +508,25 @@ ipcMain.handle('run-ai', async (_, message) => {
 
     ensureSkillCreatorAgent();
 
-    const child = spawn(exe, ['run', message, '--agent', 'skill-creator', '--dangerously-skip-permissions'], {
+    const child = spawn(exe, [
+      'run',
+      '--model', DEFAULT_AI_MODEL,
+      '--agent', 'skill-creator',
+      '--dangerously-skip-permissions',
+    ], {
       cwd,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, FORCE_COLOR: '0' },
       windowsHide: true,
     });
+
+    try {
+      child.stdin.write(contextualized);
+      child.stdin.end();
+    } catch (e) {
+      resolve({ success: false, error: 'Failed to send prompt: ' + e.message });
+      return;
+    }
 
     let stdout = '';
     let stderr = '';
