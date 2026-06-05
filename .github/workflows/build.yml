@@ -8,9 +8,13 @@ on:
     branches: [master, main]
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
@@ -23,17 +27,24 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
+          cache: npm
 
-      - run: npm install
+      - run: npm ci
+
+      - name: Install Linux deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq dpkg-dev fakeroot
 
       - run: npm run ${{ matrix.script }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: AI-Skill-Generator-${{ runner.os }}
           path: |
@@ -41,3 +52,4 @@ jobs:
             dist/*.dmg
             dist/*.AppImage
             dist/*.deb
+          compression-level: 0
