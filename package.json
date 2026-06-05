@@ -2,7 +2,7 @@
   "name": "ai-skill-generator",
   "version": "1.0.0",
   "description": "Desktop application for managing AI coding skills and chatting with an AI agent",
-  "author": "AI Skill Generator",
+  "author": "AI Skill Generator <dev@aiskillgenerator.com>",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
