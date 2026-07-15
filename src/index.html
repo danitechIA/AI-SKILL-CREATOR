@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Skill Generator</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="titlebar" data-tauri-drag-region>
+    <span class="logo-text">AI SKILL GENERATOR</span>
+    <div id="titlebar-controls">
+      <button class="tb-btn" onclick="minimizeWindow()">─</button>
+      <button class="tb-btn" onclick="maximizeWindow()">□</button>
+      <button class="tb-btn tb-close" onclick="closeWindow()">✕</button>
+    </div>
+  </div>
+  <div id="app">
+    <aside id="sidebar">
+      <nav id="nav">
+        <button class="nav-btn active" data-view="home">
+          <span class="nav-icon">&#9632;</span>
+          <span>Dashboard</span>
+        </button>
+        <button class="nav-btn" data-view="skills">
+          <span class="nav-icon">&#9733;</span>
+          <span>Skills</span>
+        </button>
+        <button class="nav-btn" data-view="chat">
+          <span class="nav-icon">&#9998;</span>
+          <span>Agent Chat</span>
+        </button>
+        <button class="nav-btn" data-view="settings">
+          <span class="nav-icon">&#9878;</span>
+          <span>Settings</span>
+        </button>
+      </nav>
+      <div class="sidebar-footer">
+        <div id="project-status" class="project-status">No project loaded</div>
+      </div>
+    </aside>
+    <main id="main-content">
+      <div id="loading-screen" class="loading-screen">
+        <div class="spinner"></div>
+        <p>Loading project...</p>
+      </div>
+      <div id="view-container"></div>
+    </main>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
