@@ -4,6 +4,12 @@ Desktop app to create and manage skills for AI coding agents — and chat with t
 
 Built with **Tauri 2** and a native **Rust** backend. The app started life as an Electron project (preserved in the [`electron`](../../tree/electron) branch) and was fully migrated to Tauri for much lighter binaries and a smaller memory footprint.
 
+![AI Skill Generator](docs/screenshot.png)
+
+## Download
+
+Grab the Windows installer from the [latest release](../../releases/latest), or build from source (see below).
+
 ## Features
 
 - **Dashboard** — project and AI engine status at a glance.
