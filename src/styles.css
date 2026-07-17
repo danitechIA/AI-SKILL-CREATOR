@@ -47,7 +47,6 @@ body {
   height: 100vh;
 }
 
-/* ─── Title Bar ─── */
 #titlebar {
   display: flex;
   align-items: center;
@@ -55,7 +54,6 @@ body {
   height: var(--titlebar-height);
   padding: 0 12px;
   background: var(--sidebar-bg);
-  -webkit-app-region: drag;
   user-select: none;
 }
 
@@ -70,7 +68,6 @@ body {
 #titlebar-controls {
   display: flex;
   gap: 6px;
-  -webkit-app-region: no-drag;
 }
 
 .tb-btn {
@@ -102,7 +99,6 @@ body {
   height: calc(100vh - var(--titlebar-height));
 }
 
-/* ─── Sidebar ─── */
 #sidebar {
   width: 240px;
   background: var(--sidebar-bg);
@@ -163,7 +159,6 @@ body {
   white-space: nowrap;
 }
 
-/* ─── Main Content ─── */
 #main-content {
   flex: 1;
   overflow-y: auto;
@@ -196,7 +191,6 @@ body {
   display: none;
 }
 
-/* ─── Shared Components ─── */
 .header {
   display: flex;
   align-items: center;
@@ -279,7 +273,6 @@ body {
   color: var(--text-secondary);
 }
 
-/* ─── Skills ─── */
 .skills-toolbar {
   display: flex;
   gap: 10px;
@@ -331,7 +324,6 @@ body {
   margin-top: 4px;
 }
 
-/* ─── Editor ─── */
 .editor-container {
   display: flex;
   flex-direction: column;
@@ -371,7 +363,6 @@ body {
   border-color: var(--primary);
 }
 
-/* ─── Chat ─── */
 .chat-container {
   display: flex;
   flex-direction: column;
@@ -476,7 +467,6 @@ body {
   padding: 4px;
 }
 
-/* ─── Modal ─── */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -541,7 +531,6 @@ body {
   margin-top: 16px;
 }
 
-/* ─── Settings ─── */
 .settings-section {
   margin-bottom: 24px;
 }
@@ -595,7 +584,6 @@ body {
   transform: translateX(18px);
 }
 
-/* ─── Toast ─── */
 .toast {
   position: fixed;
   bottom: 24px;
@@ -632,7 +620,6 @@ body {
   text-decoration: underline;
 }
 
-/* ─── Install Banner ─── */
 .install-banner {
   background: var(--code-bg);
   border: 1px solid var(--border);
@@ -667,7 +654,6 @@ body {
   transition: width 0.3s;
 }
 
-/* ─── Empty State ─── */
 .empty-state {
   text-align: center;
   padding: 48px 24px;
@@ -685,7 +671,6 @@ body {
   margin-bottom: 16px;
 }
 
-/* ─── Responsive ─── */
 @media (max-width: 768px) {
   #sidebar { width: 60px; }
   #titlebar .logo-text, .nav-btn span:last-child, .sidebar-footer { display: none; }

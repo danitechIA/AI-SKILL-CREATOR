@@ -1,4 +1,11 @@
-// ─── State ───
+function invoke(cmd, args) {
+  return window.__TAURI_INTERNALS__.invoke(cmd, args || {});
+}
+
+function minimizeWindow() { invoke('window_minimize'); }
+function maximizeWindow() { invoke('window_maximize'); }
+function closeWindow() { invoke('window_close'); }
+
 let state = {
   projectInfo: null,
   aiEngineInstalled: false,
@@ -8,7 +15,6 @@ let state = {
   editorHasChanges: false,
 };
 
-// ─── Router ───
 function navigate(view) {
   if (state.editorHasChanges && !confirm('Tienes cambios sin guardar. ¿Descartarlos?')) return;
   state.editorHasChanges = false;
@@ -23,7 +29,6 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
   btn.addEventListener('click', () => navigate(btn.dataset.view));
 });
 
-// Global keyboard shortcuts
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     const modal = document.querySelector('.modal-overlay');
@@ -35,7 +40,6 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// ─── Toast ───
 function showToast(msg, type = 'success') {
   const el = document.getElementById('toast');
   el.textContent = msg;
@@ -43,48 +47,51 @@ function showToast(msg, type = 'success') {
   setTimeout(() => el.classList.add('hidden'), 3000);
 }
 
-// ─── Init ───
 async function init() {
-  // Restore theme
   const savedTheme = localStorage.getItem('theme');
   if (savedTheme === 'dark') document.body.classList.add('dark');
 
-  const oc = await window.api.checkAIEngine();
-  state.aiEngineInstalled = oc.installed;
+  try {
+    const oc = await invoke('check_ai_engine');
+    state.aiEngineInstalled = oc.installed;
+  } catch (e) {
+    state.aiEngineInstalled = false;
+  }
 
-  const info = await window.api.getProjectInfo();
-  state.projectInfo = info;
-  updateProjectStatus(info);
+  try {
+    const info = await invoke('get_project_info');
+    state.projectInfo = info;
+    updateProjectStatus(info);
+  } catch (e) {
+    state.projectInfo = null;
+  }
 
-  setupUpdateListeners();
   setupChatListeners();
-
   renderView('home');
-}
 
-function setupUpdateListeners() {
-  window.api.onCheckUpdatesAuto(async () => {
-    await checkForUpdates();
-  });
+  checkForUpdates();
 }
 
 async function checkForUpdates() {
-  const result = await window.api.checkForUpdates();
-  if (result.hasUpdate) {
-    showToast(`v${result.latest} disponible. Descargá la nueva versión desde GitHub.`, 'info');
+  try {
+    const result = await invoke('check_for_updates');
+    if (result.has_update) {
+      showToast(`v${result.latest} disponible. Descargá la nueva versión desde GitHub.`, 'info');
+    }
+  } catch (e) {
+    console.error('Update check failed:', e);
   }
 }
 
 function updateProjectStatus(info) {
   const el = document.getElementById('project-status');
   if (info && info.exists) {
-    el.textContent = info.name + ' (' + (info.skillsCount || 0) + ' skills)';
+    el.textContent = info.name + ' (' + (info.skills_count || 0) + ' skills)';
   } else {
     el.textContent = 'No project loaded';
   }
 }
 
-// ─── Renderers ───
 function renderView(view) {
   const container = document.getElementById('view-container');
   container.style.display = 'block';
@@ -108,7 +115,6 @@ function renderView(view) {
   }
 }
 
-// ─── Home ───
 function renderHome(container) {
   const info = state.projectInfo;
   if (!info || !info.exists) {
@@ -129,7 +135,7 @@ function renderHome(container) {
 
     <div class="card-grid" style="margin-bottom:24px">
       <div class="card stat-card">
-        <div class="stat-value">${info.skillsCount || 0}</div>
+        <div class="stat-value">${info.skills_count || 0}</div>
         <div class="stat-label">Skills</div>
       </div>
       <div class="card stat-card">
@@ -153,14 +159,22 @@ function renderHome(container) {
 }
 
 async function selectProject() {
-  const result = await window.api.selectProject();
-  if (result.success) {
-    state.projectInfo = await window.api.getProjectInfo();
-    updateProjectStatus(state.projectInfo);
-    renderView(state.currentView);
-    showToast('Project loaded: ' + state.projectInfo.name);
+  try {
+    const result = await invoke('select_project');
+    if (result && result.exists) {
+      state.projectInfo = result;
+      updateProjectStatus(result);
+      renderView(state.currentView);
+      showToast('Project loaded: ' + result.name);
+    }
+  } catch (e) {
+    if (e !== 'User cancelled') {
+      showToast('Failed to select project: ' + e, 'error');
+    }
   }
 }
+
+let installProgressHandler = null;
 
 async function installAIEngine() {
   const banner = document.querySelector('.install-banner');
@@ -175,7 +189,12 @@ async function installAIEngine() {
   const bar = progress?.querySelector('.install-progress-bar');
   const text = progress?.querySelector('.install-progress-text');
 
-  window.api.onInstallProgress((data) => {
+  if (installProgressHandler) {
+    window.removeEventListener('install-progress', installProgressHandler);
+  }
+
+  installProgressHandler = (e) => {
+    const data = e.detail;
     if (data.phase === 'download' && bar) {
       if (text) text.textContent = 'Downloading AI Engine...';
       bar.style.width = Math.round((data.progress || 0) * 90) + '%';
@@ -184,22 +203,27 @@ async function installAIEngine() {
       bar.style.width = '95%';
       if (text) text.textContent = 'Extracting...';
     }
-  });
+  };
+  window.addEventListener('install-progress', installProgressHandler);
 
-  const result = await window.api.installAIEngine();
-  if (result.success) {
-    state.aiEngineInstalled = true;
-    if (bar) bar.style.width = '100%';
-    if (text) text.textContent = 'Done!';
-    showToast('AI Engine installed successfully!');
-    renderView(state.currentView);
-  } else {
-    showToast('Installation failed: ' + result.error, 'error');
+  try {
+    const result = await invoke('install_ai_engine');
+    if (result.success) {
+      state.aiEngineInstalled = true;
+      if (bar) bar.style.width = '100%';
+      if (text) text.textContent = 'Done!';
+      showToast('AI Engine installed successfully!');
+      renderView(state.currentView);
+    } else {
+      showToast('Installation failed: ' + (result.error || 'Unknown error'), 'error');
+      renderView(state.currentView);
+    }
+  } catch (e) {
+    showToast('Installation failed: ' + e, 'error');
     renderView(state.currentView);
   }
 }
 
-// ─── Skills ───
 function renderSkills(container) {
   const info = state.projectInfo;
 
@@ -223,7 +247,7 @@ function renderSkills(container) {
 function renderSkillsListHtml(skills) {
   const term = (document.getElementById('skills-search')?.value || '').toLowerCase().trim();
   const filtered = term ? skills.filter(s =>
-    s.displayName.toLowerCase().includes(term) ||
+    s.display_name.toLowerCase().includes(term) ||
     s.name.toLowerCase().includes(term) ||
     (s.description || '').toLowerCase().includes(term)
   ) : skills;
@@ -241,7 +265,7 @@ function renderSkillsListHtml(skills) {
     <div class="card-grid" id="skills-list">
       ${filtered.map(s => `
         <div class="card skill-card" data-skill="${escapeAttr(s.name)}" onclick="editSkill(this.dataset.skill)">
-          <h3>${escapeHtml(s.displayName)}</h3>
+          <h3>${escapeHtml(s.display_name)}</h3>
           <p>${escapeHtml(s.description || 'No description')}</p>
           <div class="skill-actions">
             <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();editSkill(this.closest('.skill-card').dataset.skill)">Edit</button>
@@ -287,80 +311,98 @@ async function createSkill() {
   if (!name) { showToast('Name is required', 'error'); return; }
   if (!/^[a-z0-9-]+$/.test(name)) { showToast('Use kebab-case: lowercase letters, numbers, hyphens', 'error'); return; }
 
-  const result = await window.api.createSkill(name, desc);
-  if (result.success) {
-    document.querySelector('.modal-overlay').remove();
-    state.projectInfo = await window.api.getProjectInfo();
-    updateProjectStatus(state.projectInfo);
-    renderView('skills');
-    showToast('Skill "' + name + '" created!');
-  } else {
-    showToast(result.error || 'Failed to create skill', 'error');
+  try {
+    const result = await invoke('create_skill', { name, description: desc });
+    if (result.success) {
+      document.querySelector('.modal-overlay').remove();
+      const info = await invoke('get_project_info');
+      state.projectInfo = info;
+      updateProjectStatus(info);
+      renderView('skills');
+      showToast('Skill "' + name + '" created!');
+    } else {
+      showToast(result.error || 'Failed to create skill', 'error');
+    }
+  } catch (e) {
+    showToast('Failed to create skill: ' + e, 'error');
   }
 }
 
 async function deleteSkillConfirm(name) {
   if (!confirm('Delete skill "' + name + '"? This cannot be undone.')) return;
-  const result = await window.api.deleteSkill(name);
-  if (result.success) {
-    state.projectInfo = await window.api.getProjectInfo();
-    updateProjectStatus(state.projectInfo);
-    renderView('skills');
-    showToast('Skill "' + name + '" deleted');
-  } else {
-    showToast(result.error, 'error');
+  try {
+    const result = await invoke('delete_skill', { name });
+    if (result.success) {
+      const info = await invoke('get_project_info');
+      state.projectInfo = info;
+      updateProjectStatus(info);
+      renderView('skills');
+      showToast('Skill "' + name + '" deleted');
+    } else {
+      showToast(result.error, 'error');
+    }
+  } catch (e) {
+    showToast('Failed to delete skill: ' + e, 'error');
   }
 }
 
 async function editSkill(name) {
-  const path = `.opencode/skills/${name}/SKILL.md`;
-  const result = await window.api.readFile(path);
+  const filePath = `.opencode/skills/${name}/SKILL.md`;
+  try {
+    const result = await invoke('read_file', { filePath });
+    const container = document.getElementById('view-container');
 
-  const container = document.getElementById('view-container');
-
-  if (result.success) {
-    state.editorSkillName = name;
-    state.editorHasChanges = false;
-    container.innerHTML = `
-      <div class="header">
-        <h1>${name}</h1>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-secondary" onclick="navigate('skills')">Back</button>
-          <button class="btn btn-primary" onclick="saveSkillEdit()">Save</button>
+    if (result.success) {
+      state.editorSkillName = name;
+      state.editorHasChanges = false;
+      container.innerHTML = `
+        <div class="header">
+          <h1>${name}</h1>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-secondary" onclick="navigate('skills')">Back</button>
+            <button class="btn btn-primary" onclick="saveSkillEdit()">Save</button>
+          </div>
         </div>
-      </div>
-      <div class="editor-container">
-        <textarea class="editor-textarea" id="editor-content" oninput="state.editorHasChanges=true">${escapeHtml(result.content)}</textarea>
-      </div>
-    `;
-  } else {
-    showToast('Failed to read skill file', 'error');
+        <div class="editor-container">
+          <textarea class="editor-textarea" id="editor-content" oninput="state.editorHasChanges=true">${escapeHtml(result.content)}</textarea>
+        </div>
+      `;
+    } else {
+      showToast('Failed to read skill file', 'error');
+    }
+  } catch (e) {
+    showToast('Failed to read skill file: ' + e, 'error');
   }
 }
 
 async function saveSkillEdit() {
   const content = document.getElementById('editor-content').value;
-  const path = `.opencode/skills/${state.editorSkillName}/SKILL.md`;
-  const result = await window.api.writeFile(path, content);
-  if (result.success) {
-    state.editorHasChanges = false;
-    showToast('Skill saved!');
-  } else {
-    showToast('Save failed: ' + result.error, 'error');
+  const filePath = `.opencode/skills/${state.editorSkillName}/SKILL.md`;
+  try {
+    const result = await invoke('write_file', { filePath, content });
+    if (result.success) {
+      state.editorHasChanges = false;
+      showToast('Skill saved!');
+    } else {
+      showToast('Save failed: ' + result.error, 'error');
+    }
+  } catch (e) {
+    showToast('Save failed: ' + e, 'error');
   }
 }
 
-// ─── Chat ───
 let chatHistory = [];
-
 let chatStreamBuffer = '';
 let chatStreamMsgIndex = -1;
 let chatRunning = false;
 
 function setupChatListeners() {
-  window.api.onAIOutput((data) => {
-    chatStreamBuffer += stripAIBranding(data);
-    chatHistory[chatStreamMsgIndex].content = chatStreamBuffer;
+  window.addEventListener('ai-output', (e) => {
+    const data = e.detail;
+    chatStreamBuffer += data.chunk || '';
+    if (chatStreamMsgIndex >= 0 && chatStreamMsgIndex < chatHistory.length) {
+      chatHistory[chatStreamMsgIndex].content = chatStreamBuffer;
+    }
     if (state.currentView === 'chat') {
       const msgs = document.querySelectorAll('.chat-messages .message.assistant');
       const lastMsg = msgs[msgs.length - 1];
@@ -372,7 +414,8 @@ function setupChatListeners() {
     }
   });
 
-  window.api.onAIDone((result) => {
+  window.addEventListener('ai-done', (e) => {
+    const data = e.detail;
     const displayText = stripAIBranding(chatStreamBuffer || '(no output)');
     chatHistory[chatStreamMsgIndex].content = displayText;
     chatRunning = false;
@@ -383,13 +426,24 @@ function setupChatListeners() {
         lastMsg.classList.remove('thinking');
         lastMsg.textContent = displayText;
       }
-      document.getElementById('chat-status').textContent = result.success ? '' : 'Command finished with errors';
+      document.getElementById('chat-status').textContent = data.success ? '' : 'Command finished with errors';
       document.getElementById('chat-input').disabled = false;
       document.getElementById('chat-send-btn').disabled = false;
       document.getElementById('chat-input').focus();
       document.getElementById('chat-messages')?.scrollTo(0, 999999);
     }
   });
+}
+
+async function refreshProjectInfo() {
+  try {
+    const info = await invoke('get_project_info');
+    if (info) {
+      state.projectInfo = info;
+      updateProjectStatus(info);
+      if (state.currentView === 'skills') renderView('skills');
+    }
+  } catch (e) {}
 }
 
 function renderChat(container) {
@@ -459,16 +513,16 @@ async function sendChat() {
   let result;
   try {
     result = await Promise.race([
-      window.api.runAI(msg, contextHistory),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout (120s)')), 120000))
+      invoke('run_ai', { message: msg, history: contextHistory }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout (300s)')), 300000))
     ]);
   } catch (e) {
     chatRunning = false;
-    chatHistory[chatStreamMsgIndex].content = 'Error: ' + e.message;
+    const errText = 'Error: ' + (e.message || e);
+    chatHistory[chatStreamMsgIndex].content = errText;
     if (state.currentView === 'chat') {
-      const msgs = document.querySelectorAll('.chat-messages .message.assistant');
-      const lastMsg = msgs[msgs.length - 1];
-      if (lastMsg) lastMsg.textContent = 'Error: ' + e.message;
+      const lastMsg = document.querySelector('.chat-messages .message.assistant:last-child');
+      if (lastMsg) { lastMsg.classList.remove('thinking'); lastMsg.textContent = errText; }
       document.getElementById('chat-status').textContent = '';
       input.disabled = false;
       document.getElementById('chat-send-btn').disabled = false;
@@ -477,23 +531,19 @@ async function sendChat() {
     return;
   }
 
-  if (!result.success && !result.output) {
-    chatRunning = false;
-    chatHistory[chatStreamMsgIndex].content = 'Error: ' + (result.error || 'Command failed');
-    if (state.currentView === 'chat') {
-      const msgs = document.querySelectorAll('.chat-messages .message.assistant');
-      const lastMsg = msgs[msgs.length - 1];
-      if (lastMsg) lastMsg.textContent = 'Error: ' + (result.error || 'Command failed');
-      document.getElementById('chat-status').textContent = '';
-    }
+  chatRunning = false;
+  const displayText = stripAIBranding(result.output || '(no output)');
+  chatHistory[chatStreamMsgIndex].content = displayText;
+  if (state.currentView === 'chat') {
+    const lastMsg = document.querySelector('.chat-messages .message.assistant:last-child');
+    if (lastMsg) { lastMsg.classList.remove('thinking'); lastMsg.textContent = displayText; }
+    document.getElementById('chat-status').textContent = result.success ? '' : 'Command finished with errors';
+    input.disabled = false;
+    document.getElementById('chat-send-btn').disabled = false;
+    input.focus();
+    document.getElementById('chat-messages')?.scrollTo(0, 999999);
   }
-
-  const refreshed = await window.api.getProjectInfo();
-  if (refreshed) {
-    state.projectInfo = refreshed;
-    updateProjectStatus(refreshed);
-    if (state.currentView === 'skills') renderView('skills');
-  }
+  refreshProjectInfo();
 }
 
 function appendMessage(role, content) {
@@ -513,7 +563,6 @@ function clearChat() {
   renderView('chat');
 }
 
-// ─── Settings ───
 function renderSettings(container) {
   const isDark = document.body.classList.contains('dark');
   const info = state.projectInfo;
@@ -568,7 +617,6 @@ function toggleTheme() {
   localStorage.setItem('theme', isDark ? 'dark' : 'light');
 }
 
-// ─── Utils ───
 function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
@@ -583,5 +631,4 @@ function stripAIBranding(text) {
   return text.replace(/(?<![.@\/])\bOpenCode\b(?!-)/gi, 'AI Skill Generator');
 }
 
-// ─── Start ───
 document.addEventListener('DOMContentLoaded', init);

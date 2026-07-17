@@ -7,12 +7,12 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div id="titlebar">
+  <div id="titlebar" data-tauri-drag-region>
     <span class="logo-text">AI SKILL GENERATOR</span>
     <div id="titlebar-controls">
-      <button class="tb-btn" onclick="window.api.windowMinimize()">─</button>
-      <button class="tb-btn" onclick="window.api.windowMaximize()">□</button>
-      <button class="tb-btn tb-close" onclick="window.api.windowClose()">✕</button>
+      <button class="tb-btn" onclick="minimizeWindow()">─</button>
+      <button class="tb-btn" onclick="maximizeWindow()">□</button>
+      <button class="tb-btn tb-close" onclick="closeWindow()">✕</button>
     </div>
   </div>
   <div id="app">

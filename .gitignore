@@ -1,14 +1,3 @@
-node_modules/
-dist/
-build/
-*.exe
-*.log
-
-# OS files
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# Environment
-.env
-.env.local
+src-tauri/target
+node_modules
+dist
