@@ -1,3 +1,12 @@
+<p align="center"><img src=".github/header.svg" alt="AI-SKILL-CREATOR" width="100%"></p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Tauri-2-24C8DB?style=flat-square&logo=tauri&logoColor=white" alt="Tauri">
+  <img src="https://img.shields.io/badge/Rust-000000?style=flat-square&logo=rust&logoColor=white" alt="Rust">
+  <img src="https://img.shields.io/badge/Windows-instalador-0078D6?style=flat-square&logo=windows&logoColor=white" alt="Windows">
+  <a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/danitechIA/AI-SKILL-CREATOR?style=flat-square&color=22D3EE" alt="release"></a>
+</p>
+
 # AI Skill Generator
 
 Desktop app to create and manage skills for AI coding agents — and chat with the agent — from a visual interface, no terminal required.
